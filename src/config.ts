@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 
@@ -10,25 +10,28 @@ export const config = {
   },
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY!,
+    oauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN!,
   },
   claude: {
-    useBedrock: process.env.CLAUDE_CODE_USE_BEDROCK === '1',
-    useVertex: process.env.CLAUDE_CODE_USE_VERTEX === '1',
+    useBedrock: process.env.CLAUDE_CODE_USE_BEDROCK === "1",
+    useVertex: process.env.CLAUDE_CODE_USE_VERTEX === "1",
   },
-  baseDirectory: process.env.BASE_DIRECTORY || '',
-  debug: process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development',
+  baseDirectory: process.env.BASE_DIRECTORY || "",
+  debug: process.env.DEBUG === "true" || process.env.NODE_ENV === "development",
 };
 
 export function validateConfig() {
   const required = [
-    'SLACK_BOT_TOKEN',
-    'SLACK_APP_TOKEN',
-    'SLACK_SIGNING_SECRET',
+    "SLACK_BOT_TOKEN",
+    "SLACK_APP_TOKEN",
+    "SLACK_SIGNING_SECRET",
   ];
 
   const missing = required.filter((key) => !process.env[key]);
-  
+
   if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`,
+    );
   }
 }
