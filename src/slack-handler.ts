@@ -175,16 +175,26 @@ export class SlackHandler {
           text,
         });
 
-        this.commandManager.handleCommand(text, {
-          say,
-          thread_ts,
-          ts,
-          cwd: this.workingDirManager.getWorkingDirectory(
-            channel,
+        try {
+          this.commandManager.handleCommand(text, {
+            say,
             thread_ts,
-            channel.startsWith("D") ? user : undefined,
-          ),
-        });
+            ts,
+            cwd: this.workingDirManager.getWorkingDirectory(
+              channel,
+              thread_ts,
+              channel.startsWith("D") ? user : undefined,
+            ),
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+
+          say({
+            message: `err: ${message}`,
+            thread_ts: thread_ts || ts,
+          });
+        }
+
         return;
       }
     }
