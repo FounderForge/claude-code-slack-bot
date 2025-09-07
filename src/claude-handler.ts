@@ -2,6 +2,7 @@ import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { ConversationSession } from "./types";
 import { Logger } from "./logger";
 import { McpManager } from "./mcp-manager";
+import * as path from "path";
 
 export class ClaudeHandler {
   private sessions: Map<string, ConversationSession> = new Map();
@@ -49,7 +50,7 @@ export class ClaudeHandler {
   ): AsyncGenerator<SDKMessage, void, unknown> {
     const options: any = {
       outputFormat: "stream-json",
-      permissionMode: slackContext ? "default" : "bypassPermissions",
+      permissionMode: "bypassPermissions",
     };
 
     // Add permission prompt tool if we have Slack context
@@ -76,7 +77,7 @@ export class ClaudeHandler {
           command: "npx",
           args: [
             "tsx",
-            "/Users/ricardo/Developer/finalpiece/claude-code-slack-bot/src/permission-mcp-server.ts",
+            path.join(process.cwd(), "src", "permission-mcp-server.ts"),
           ],
           env: {
             SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
@@ -127,7 +128,7 @@ export class ClaudeHandler {
         abortController: abortController || new AbortController(),
         options,
       })) {
-        if(message.type === "result" && message.is_error) {
+        if (message.type === "result" && message.is_error) {
           console.log("error found: ", message);
         }
 
