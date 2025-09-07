@@ -58,7 +58,7 @@ export class SlackHandler {
         const message =
           incomingMessage.length > 0 ? incomingMessage : "updating from slack.";
 
-        const command = `git commit -m ${message} &&  git push`;
+        const command = `git add -A -v && git commit -m "${message}" && git push`;
         exec(
           command,
           {
