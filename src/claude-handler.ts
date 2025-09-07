@@ -127,6 +127,10 @@ export class ClaudeHandler {
         abortController: abortController || new AbortController(),
         options,
       })) {
+        if(message.type === "result" && message.is_error) {
+          console.log("error found: ", message);
+        }
+
         if (message.type === "system" && message.subtype === "init") {
           if (session) {
             session.sessionId = message.session_id;
@@ -137,6 +141,7 @@ export class ClaudeHandler {
             });
           }
         }
+
         yield message;
       }
     } catch (error) {
