@@ -53,6 +53,44 @@ export class SlackHandler {
           thread_ts: ctx.thread_ts || ctx.ts,
         });
       },
+      upload: (args, ctx: any) => {
+        const incomingMessage = args.join(" ").trim();
+        const message =
+          incomingMessage.length > 0 ? incomingMessage : "updating from slack.";
+
+        const command = `git commit -m ${message} &&  git push`;
+        exec(
+          command,
+          {
+            cwd: ctx.cwd,
+          },
+
+          (error, stdout, stderr) => {
+            if (error) {
+              ctx.say({
+                text: `Error: ${error.message}`,
+                thread_ts: ctx.thread_ts || ctx.ts,
+              });
+
+              return;
+            }
+
+            if (stderr) {
+              ctx.say({
+                text: `Std Error: ${stderr}`,
+                thread_ts: ctx.thread_ts || ctx.ts,
+              });
+
+              return;
+            }
+
+            ctx.say({
+              text: stdout,
+              thread_ts: ctx.thread_ts || ctx.ts,
+            });
+          },
+        );
+      },
       b: (args, ctx: any) => {
         console.log("pipipipi: ", ctx.cwd);
         exec(
@@ -81,7 +119,7 @@ export class SlackHandler {
             }
 
             ctx.say({
-              text: `Output: ${stdout}`,
+              text: stdout,
               thread_ts: ctx.thread_ts || ctx.ts,
             });
           },
