@@ -190,7 +190,7 @@ export class SlackHandler {
           const message = err instanceof Error ? err.message : String(err);
 
           say({
-            message: `err: ${message}`,
+            text: `err: ${message}`,
             thread_ts: thread_ts || ts,
           });
         }
