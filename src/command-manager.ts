@@ -1,8 +1,8 @@
-export type Command<T> = (args: string[], ctx: T) => void;
+export type Command<T> = (args: string[], ctx: T) => void | PromiseLike<void>;
 
-export class CommandManager {
+export class CommandManager<T> {
   constructor(
-    private readonly commands: Record<string, Command<unknown>> = {},
+    private readonly commands: Record<string, Command<T>> = {},
     private readonly prefix = "!",
   ) {}
 
@@ -10,7 +10,7 @@ export class CommandManager {
     return cmd.startsWith(this.prefix);
   }
 
-  handleCommand<T>(cmd: string, ctx: T) {
+  async handleCommand(cmd: string, ctx: T) {
     const args = cmd.split(" ");
 
     // remove prefix
@@ -22,6 +22,6 @@ export class CommandManager {
       throw new Error("command not found.");
     }
 
-    commandInterface(args.splice(1), ctx);
+    await commandInterface(args.splice(1), ctx);
   }
 }

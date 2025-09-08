@@ -1,4 +1,4 @@
-import { App } from "@slack/bolt";
+import { App, SayFn } from "@slack/bolt";
 import { ClaudeHandler } from "./claude-handler";
 import { SDKMessage } from "@anthropic-ai/claude-code";
 import { Logger } from "./logger";
@@ -10,7 +10,7 @@ import { permissionServer } from "./permission-mcp-server";
 import { config } from "./config";
 import { CommandManager } from "./command-manager";
 import { exec } from "child_process";
-import { stderr } from "process";
+import { SLACK_ASK_PROJECT } from "./slack-blocks";
 
 interface MessageEvent {
   user: string;
@@ -29,6 +29,16 @@ interface MessageEvent {
   }>;
 }
 
+interface CommandContext {
+  say: SayFn;
+  thread_ts?: string;
+  ts: string;
+  cwd?: string;
+  isDM: boolean;
+  channel: string;
+  user: string;
+}
+
 export class SlackHandler {
   private app: App;
   private claudeHandler: ClaudeHandler;
@@ -44,9 +54,9 @@ export class SlackHandler {
   private currentReactions: Map<string, string> = new Map(); // sessionKey -> current emoji
   private botUserId: string | null = null;
 
-  private commandManager: CommandManager = new CommandManager(
+  private commandManager: CommandManager<CommandContext> = new CommandManager(
     {
-      test: (args, ctx: any) => {
+      ping: (args, ctx) => {
         const built = args.join(", ");
         ctx.say({
           text: "Pong! " + built,
@@ -92,7 +102,6 @@ export class SlackHandler {
         );
       },
       b: (args, ctx: any) => {
-        console.log("pipipipi: ", ctx.cwd);
         exec(
           args.join(" "),
           {
@@ -125,6 +134,75 @@ export class SlackHandler {
           },
         );
       },
+      join: async (args, ctx) => {
+        if (!args.length) {
+          const availableProjs =
+            await this.workingDirManager.getAvailableDirectories();
+          ctx.say({
+            text: "You need to pick a project to start working on.",
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "plain_text",
+                  text: "You need to pick a project to start working on.",
+                },
+              },
+              {
+                type: "divider",
+              },
+              {
+                type: "section",
+                text: {
+                  type: "plain_text",
+                  text: "Pick an item:",
+                },
+                accessory: {
+                  type: "static_select",
+                  placeholder: {
+                    type: "plain_text",
+                    text: "Select a project",
+                  },
+                  options: availableProjs.map((it) => ({
+                    text: {
+                      type: "plain_text",
+                      text: it,
+                    },
+                    value: it,
+                  })),
+                  action_id: "select_project",
+                },
+              },
+            ],
+            thread_ts: ctx.thread_ts || ctx.ts,
+          });
+          return;
+        }
+
+        const result = this.workingDirManager.setWorkingDirectory(
+          ctx.channel,
+          args[0],
+          ctx.thread_ts,
+          ctx.isDM ? ctx.user : undefined,
+        );
+
+        if (result.success) {
+          const context = ctx.thread_ts
+            ? "this thread"
+            : ctx.isDM
+              ? "this conversation"
+              : "this channel";
+          await ctx.say({
+            text: `✅ Working directory set for ${context}: \`${result.resolvedPath}\``,
+            thread_ts: ctx.thread_ts || ctx.ts,
+          });
+        } else {
+          await ctx.say({
+            text: `❌ ${result.error}`,
+            thread_ts: ctx.thread_ts || ctx.ts,
+          });
+        }
+      },
     },
     "!",
   );
@@ -138,7 +216,16 @@ export class SlackHandler {
     this.todoManager = new TodoManager();
   }
 
-  async handleMessage(event: MessageEvent, say: any) {
+  async handleMessage(event: MessageEvent, say: SayFn) {
+    try {
+      await this._handleMessage(event, say);
+    } catch (err) {
+      await say("An error ocurred.");
+      this.logger.error("An error ocurred: ", err);
+    }
+  }
+
+  async _handleMessage(event: MessageEvent, say: SayFn) {
     const { user, channel, thread_ts, ts, text, files } = event;
 
     // Process any attached files
@@ -176,7 +263,7 @@ export class SlackHandler {
         });
 
         try {
-          this.commandManager.handleCommand(text, {
+          await this.commandManager.handleCommand(text, {
             say,
             thread_ts,
             ts,
@@ -185,6 +272,9 @@ export class SlackHandler {
               thread_ts,
               channel.startsWith("D") ? user : undefined,
             ),
+            isDM: channel.startsWith("D"),
+            channel,
+            user,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -197,38 +287,6 @@ export class SlackHandler {
 
         return;
       }
-    }
-
-    // Check if this is a working directory command (only if there's text)
-    const setDirPath = text
-      ? this.workingDirManager.parseSetCommand(text)
-      : null;
-    if (setDirPath) {
-      const isDM = channel.startsWith("D");
-      const result = this.workingDirManager.setWorkingDirectory(
-        channel,
-        setDirPath,
-        thread_ts,
-        isDM ? user : undefined,
-      );
-
-      if (result.success) {
-        const context = thread_ts
-          ? "this thread"
-          : isDM
-            ? "this conversation"
-            : "this channel";
-        await say({
-          text: `✅ Working directory set for ${context}: \`${result.resolvedPath}\``,
-          thread_ts: thread_ts || ts,
-        });
-      } else {
-        await say({
-          text: `❌ ${result.error}`,
-          thread_ts: thread_ts || ts,
-        });
-      }
-      return;
     }
 
     // Check if this is a get directory command (only if there's text)
@@ -288,31 +346,7 @@ export class SlackHandler {
 
     // Working directory is always required
     if (!workingDirectory) {
-      let errorMessage = `⚠️ No working directory set. `;
-
-      if (
-        !isDM &&
-        !this.workingDirManager.hasChannelWorkingDirectory(channel)
-      ) {
-        // No channel default set
-        errorMessage += `Please set a default working directory for this channel first using:\n`;
-        if (config.baseDirectory) {
-          errorMessage += `\`cwd project-name\` or \`cwd /absolute/path\`\n\n`;
-          errorMessage += `Base directory: \`${config.baseDirectory}\``;
-        } else {
-          errorMessage += `\`cwd /path/to/directory\``;
-        }
-      } else if (thread_ts) {
-        // In thread but no thread-specific directory
-        errorMessage += `You can set a thread-specific working directory using:\n`;
-        if (config.baseDirectory) {
-          errorMessage += `\`@claudebot cwd project-name\` or \`@claudebot cwd /absolute/path\``;
-        } else {
-          errorMessage += `\`@claudebot cwd /path/to/directory\``;
-        }
-      } else {
-        errorMessage += `Please set one first using:\n\`cwd /path/to/directory\``;
-      }
+      let errorMessage = `⚠️ No working directory set.\n\nDo it by doing: !join <channel>`;
 
       await say({
         text: errorMessage,
@@ -992,6 +1026,48 @@ export class SlackHandler {
         text: "❌ Tool execution denied",
       });
     });
+
+    this.app.action(
+      "select_project",
+      async ({ ack, body, respond, ...etc }) => {
+        console.log(body, etc);
+        if (
+          body.type === "block_actions" &&
+          body.actions[0].type === "static_select"
+        ) {
+          const cwd = body.actions[0].selected_option.value;
+
+          const isDM = body.channel?.id.startsWith("D") ?? false;
+          const result = this.workingDirManager.setWorkingDirectory(
+            body.channel?.id ?? "",
+            cwd,
+            body.container.thread_ts || body.message?.ts,
+            isDM ? body.user.id : undefined,
+          );
+
+          await ack();
+
+          if (result.success) {
+            await respond({
+              response_type: "ephemeral",
+              text: `✅ Working directory set: ${cwd}`,
+            });
+          } else {
+            await respond({
+              response_type: "ephemeral",
+              text: "Oops!: " + result.error,
+            });
+          }
+        } else {
+          await ack();
+
+          await respond({
+            response_type: "ephemeral",
+            text: "something went wrong.",
+          });
+        }
+      },
+    );
 
     // Cleanup inactive sessions periodically
     setInterval(
