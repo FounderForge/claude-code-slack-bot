@@ -1030,7 +1030,6 @@ export class SlackHandler {
     this.app.action(
       "select_project",
       async ({ ack, body, respond, ...etc }) => {
-        console.log(body, etc);
         if (
           body.type === "block_actions" &&
           body.actions[0].type === "static_select"
