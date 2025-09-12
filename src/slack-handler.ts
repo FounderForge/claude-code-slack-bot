@@ -962,16 +962,16 @@ export class SlackHandler {
 
   setupEventHandlers() {
     // Handle direct messages
-    this.app.message(async ({ message, say }) => {
-      const threadTs: string | undefined = (message as any).thread_ts;
+    // this.app.message(async ({ message, say }) => {
+    //   const threadTs: string | undefined = (message as any).thread_ts;
 
-      if (threadTs && message.channel_type === "channel") {
-        if (isChannelRegistered(threadTs)) {
-          // check if the channel is registered.
-          await this.handleMessage(message as MessageEvent, say);
-        }
-      }
-    });
+    //   if (threadTs && message.channel_type === "channel") {
+    //     if (isChannelRegistered(threadTs)) {
+    //       // check if the channel is registered.
+    //       await this.handleMessage(message as MessageEvent, say);
+    //     }
+    //   }
+    // });
 
     // Handle app mentions
     this.app.event("app_mention", async ({ event, say }) => {
