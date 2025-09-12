@@ -11,6 +11,7 @@ import { config } from "./config";
 import { CommandManager } from "./command-manager";
 import { exec } from "child_process";
 import { SLACK_ASK_PROJECT } from "./slack-blocks";
+import { isChannelRegistered, registerChannel } from "./slack-channel-handler";
 
 interface MessageEvent {
   user: string;
@@ -56,14 +57,14 @@ export class SlackHandler {
 
   private commandManager: CommandManager<CommandContext> = new CommandManager(
     {
-      ping: (args, ctx) => {
+      ping: async (args, ctx) => {
         const built = args.join(", ");
         ctx.say({
           text: "Pong! " + built,
           thread_ts: ctx.thread_ts || ctx.ts,
         });
       },
-      upload: (args, ctx: any) => {
+      upload: async (args, ctx: any) => {
         const incomingMessage = args.join(" ").trim();
         const message =
           incomingMessage.length > 0 ? incomingMessage : "updating from slack.";
@@ -101,7 +102,7 @@ export class SlackHandler {
           },
         );
       },
-      b: (args, ctx: any) => {
+      b: async (args, ctx: any) => {
         exec(
           args.join(" "),
           {
@@ -242,9 +243,6 @@ export class SlackHandler {
       }
     }
 
-    // If no text and no files, nothing to process
-    if (!text && processedFiles.length === 0) return;
-
     this.logger.debug("Received message from Slack", {
       user,
       channel,
@@ -255,6 +253,9 @@ export class SlackHandler {
         : "[no text]",
       fileCount: processedFiles.length,
     });
+
+    // If no text and no files, nothing to process
+    if (!text && processedFiles.length === 0) return;
 
     if (text) {
       if (this.commandManager.isValidCommand(text)) {
@@ -949,7 +950,7 @@ export class SlackHandler {
   private formatMessage(text: string, isFinal: boolean): string {
     // Convert markdown code blocks to Slack format
     let formatted = text
-      .replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) => {
+      .replace(/```(\w+)?\n([\s\S]*?)```/g, (_, _lang, code) => {
         return "```" + code + "```";
       })
       .replace(/`([^`]+)`/g, "`$1`")
@@ -962,9 +963,13 @@ export class SlackHandler {
   setupEventHandlers() {
     // Handle direct messages
     this.app.message(async ({ message, say }) => {
-      if (message.subtype === undefined && "user" in message) {
-        this.logger.info("Handling direct message event");
-        await this.handleMessage(message as MessageEvent, say);
+      const threadTs: string | undefined = (message as any).thread_ts;
+
+      if (threadTs && message.channel_type === "channel") {
+        if (isChannelRegistered(threadTs)) {
+          // check if the channel is registered.
+          await this.handleMessage(message as MessageEvent, say);
+        }
       }
     });
 
@@ -1043,6 +1048,11 @@ export class SlackHandler {
             body.container.thread_ts || body.message?.ts,
             isDM ? body.user.id : undefined,
           );
+
+          const thread = (body.message as any).thread_ts as string | undefined;
+          if (thread) {
+            registerChannel(thread);
+          }
 
           await ack();
 
